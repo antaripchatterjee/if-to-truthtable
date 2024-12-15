@@ -1,0 +1,9 @@
+build/
+dist/
+if_to_truthtable.egg-info/
+**/__pycache__/
+env/
+base/
+backups/
+.env
+document.txt
