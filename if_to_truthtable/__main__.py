@@ -4,6 +4,7 @@ import argparse
 from . import ExpressionBuilder
 from . import Lexer
 from . import ExpressionError
+from . import ScriptContext
 
 def read_exprs_from_cmdline(args):
     # Read value from '-e' argument
@@ -46,12 +47,12 @@ def main():
     parser = argparse.ArgumentParser(description="Read value from arguments or enter interactive mode.")
     parser.add_argument('-e', '--expression', type=str, help="Expression to read as value")
     args = parser.parse_args()
-
     code = read_exprs_from_cmdline(args)
     if code is not None:
         try:
-            for expr, expr_id in ExpressionBuilder(code).cleanComments().expressions():
-                tokens = Lexer(expr=expr, expr_id=expr_id).tokenize()
+            for expr in ExpressionBuilder(code).cleanComments().expressions():
+                print(expr)
+                tokens = Lexer(expr=expr).tokenize()
                 for token in tokens:
                     print(token)
         except ExpressionError as e:

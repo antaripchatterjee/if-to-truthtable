@@ -13,6 +13,12 @@ class Lexer(object):
 
     __compiledTokenRules: dict[str, Optional[re.Pattern]] = {
         'INITIAL_RULE': None,
+        'ALIAS_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::ALIAS$'),
+        'MUT_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::MUT$'),
+        'EXPR_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::EXPR$'),
+        'EVAL_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::EVAL$'),
+        'BEGIN_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::BEGIN'),
+        'END_COMMAND': re.compile(r'^ACTION::PAT_RESERVED_KEYWORD::END'),
         'OPEN_PARANTHESIS': re.compile(r'^PARANTHESIS::PAT_PARANTHESIS$'),
         'CLOSE_PARANTHESIS': re.compile(r'^OPERAND::PAT_PARANTHESIS$'),
         'GENERIC_OPERAND': re.compile(r'^OPERAND::\b(?!PAT_PARANTHESIS\b)[a-z_][a-z0-9_]*$', re.IGNORECASE),
@@ -20,12 +26,10 @@ class Lexer(object):
         'BINARY_OPERATOR': re.compile(r'^OPERATOR::PAT_BINARY_OPERATOR$')
     }
 
-    def __init__(self, expr: str, expr_id: int):
+    def __init__(self, expr: str):
         super(Lexer, self).__init__()
         self.__expr: str = expr
-        self.__expr_id: int = expr_id
         self.__tokens: List[Token] = list()
-
         
     
     def __insert_into_sorted_tokens(self, startPositions: List[int], startPos: int) -> int:
@@ -36,10 +40,19 @@ class Lexer(object):
     def __expectations(tokenRuleName) -> dict[str, tuple[str]]:
         tokenRuleNames = {
             'INITIAL_RULE': (
-                'OPEN_PARANTHESIS',
-                'GENERIC_OPERAND',
-                'UNARY_OPERATOR'
+                'ALIAS_COMMAND',
+                'BEGIN_COMMAND',
+                'MUT_COMMAND',
+                'EXPR_COMMAND',
+                'EVAL_COMMAND',
+                'END_COMMAND'
             ),
+            'ALIAS_COMMAND': (),
+            'BEGIN_COMMAND': (),
+            'MUT_COMMAND': (),
+            'EXPR_COMMAND': (),
+            'EVAL_COMMAND': (),
+            'END_COMMAND': (),
             'OPEN_PARANTHESIS': (
                 'OPEN_PARANTHESIS',
                 'GENERIC_OPERAND',
@@ -71,7 +84,7 @@ class Lexer(object):
         for rule, pattern, tokenType in RULE_ORDERS:
             matches = re.finditer(pattern, expr, flags=re.MULTILINE)
             for match in matches:
-                patternName = 'DEFAULT'
+                patternName = ''
                 for k, v in match.groupdict().items():
                     if v is not None:
                         patternName = k
@@ -116,7 +129,7 @@ class Lexer(object):
         currentTokenRuleName = 'INITIAL_RULE'
         prevToken = None
         for token in self.__tokens:
-            tokeRule = f'{token.tokenType}::{token.ruleName}'
+            tokeRule = f'{token.tokenType}::{token.ruleName}{"" if token.patternName.strip() == "" else f"::{token.patternName}"}'
             expectedTokenRules = ((expectedTokenRuleName, Lexer.__compiledTokenRules[expectedTokenRuleName]) \
                 for expectedTokenRuleName in Lexer.__expectations(currentTokenRuleName))
             fulfilled = False

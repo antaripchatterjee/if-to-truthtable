@@ -14,9 +14,8 @@ class ExpressionBuilder(object):
         quote_char = ''
         is_escaped = False
         start_pos = 0
-        expr_id = 1
-        paran_depth = 0
-        open_paran_posisions = []
+        # paran_depth = 0
+        # open_paran_posisions = []
 
         for index, char in enumerate(self.__code):
             if not is_string:
@@ -24,18 +23,17 @@ class ExpressionBuilder(object):
                     is_string = True
                     quote_char = char
                 elif char == ';':
-                    yield self.__code[start_pos:index], expr_id
+                    yield self.__code[start_pos:index]
                     start_pos = index + 1
-                    expr_id += 1
-                elif char == '(':
-                    paran_depth += 1
-                    open_paran_posisions.append(str(index+1))
-                elif char == ')':
-                    paran_depth -= 1
-                    if paran_depth < 0:
-                        raise ExpressionError(f"unexpected occurance of closing paranthesis at {index+1}")
-                    else:
-                        open_paran_posisions.pop()
+                # elif char == '(':
+                #     paran_depth += 1
+                #     open_paran_posisions.append(str(index+1))
+                # elif char == ')':
+                #     paran_depth -= 1
+                #     if paran_depth < 0:
+                #         raise ExpressionError(f"unexpected occurance of closing paranthesis at {index+1}")
+                #     else:
+                #         open_paran_posisions.pop()
             else:
                 if char == quote_char and not is_escaped:
                     is_string = False
@@ -46,6 +44,6 @@ class ExpressionBuilder(object):
                     is_escaped = True
                 elif is_escaped:
                     is_escaped = False
-        if paran_depth != 0:
-            raise ExpressionError(f'unclosed paranthesis at positions {''.join(open_paran_posisions)}')
-        yield self.__code[start_pos:], expr_id
+        # if paran_depth != 0:
+        #     raise ExpressionError(f'unclosed paranthesis at positions {''.join(open_paran_posisions)}')
+        yield self.__code[start_pos:]
