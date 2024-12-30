@@ -1,29 +1,34 @@
 import re
 import copy
 import bisect
+import fnmatch
 
-from typing import List, Optional
+from typing import List, Optional, Callable
 
 from .error import ExpressionError
 from .rule import RULE_ORDERS
 from .token import Token
 
+from .grammer import *
+
 
 class Lexer(object):
 
-    __compiledTokenRules: dict[str, Optional[re.Pattern]] = {
-        'INITIAL_RULE': None,
-        'ALIAS_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::ALIAS$'),
-        'MUT_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::MUT$'),
-        'EXPR_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::EXPR$'),
-        'EVAL_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::EVAL$'),
-        'BEGIN_COMMAND': re.compile(r'^COMMAND::PAT_RESERVED_KEYWORD::BEGIN'),
-        'END_COMMAND': re.compile(r'^ACTION::PAT_RESERVED_KEYWORD::END'),
-        'OPEN_PARANTHESIS': re.compile(r'^PARANTHESIS::PAT_PARANTHESIS$'),
-        'CLOSE_PARANTHESIS': re.compile(r'^OPERAND::PAT_PARANTHESIS$'),
-        'GENERIC_OPERAND': re.compile(r'^OPERAND::\b(?!PAT_PARANTHESIS\b)[a-z_][a-z0-9_]*$', re.IGNORECASE),
-        'UNARY_OPERATOR': re.compile(r'^OPERATOR::PAT_UNARY_OPERATOR$'),
-        'BINARY_OPERATOR': re.compile(r'^OPERATOR::PAT_BINARY_OPERATOR$')
+    __tokenRules: dict[str, Callable[[str], bool]] = {
+        'NO_STATEMENT': None,
+        'STATEMENT_ALIAS': lambda tr: tr == 'STATEMENT::RESERVED_KEYWORD::ALIAS',
+        'STATEMENT_MUT': lambda tr: tr == 'STATEMENT::RESERVED_KEYWORD::MUT',
+        'STATEMENT_CONST': lambda tr: tr == 'STATEMENT::RESERVED_KEYWORD::MUT',
+        'STATEMENT_EXPR': lambda tr: tr == 'STATEMENT::RESERVED_KEYWORD::EXPR',
+        'STATEMENT_EVAL': lambda tr: tr == 'STATEMENT::RESERVED_KEYWORD::EVAL',
+        'STATEMENT_BEGIN': lambda tr: tr == 'STATEMENT::RESERVED_KEYWORD::BEGIN',
+        'STATEMENT_END': lambda tr: tr == 'STATEMENT::RESERVED_KEYWORD::END',
+        'OPEN_PARANTHESIS': lambda tr: tr == 'PARANTHESIS::PARANTHESIS',
+        'CLOSE_PARANTHESIS': lambda tr: tr == 'OPERAND::PARANTHESIS',
+        'GENERIC_OPERAND': lambda tr: tr == fnmatch.fnmatch(tr, 'OPERAND::[_a-z][_a-z0-9]*::[_a-z][_a-z0-9]*') \
+            and not str.startswith(tr.upper(), 'OPERAND::PARANTHESIS'),
+        'UNARY_OPERATOR': lambda tr: tr == 'OPERATOR::UNARY_OPERATOR',
+        'BINARY_OPERATOR': lambda tr: tr == 'OPERATOR::BINARY_OPERATOR'
     }
 
     def __init__(self, expr: str):
@@ -35,56 +40,13 @@ class Lexer(object):
     def __insert_into_sorted_tokens(self, startPositions: List[int], startPos: int) -> int:
         inserting_index = bisect.bisect_left(startPositions, startPos)
         return inserting_index
-
-    @staticmethod
-    def __expectations(tokenRuleName) -> dict[str, tuple[str]]:
-        tokenRuleNames = {
-            'INITIAL_RULE': (
-                'ALIAS_COMMAND',
-                'BEGIN_COMMAND',
-                'MUT_COMMAND',
-                'EXPR_COMMAND',
-                'EVAL_COMMAND',
-                'END_COMMAND'
-            ),
-            'ALIAS_COMMAND': (),
-            'BEGIN_COMMAND': (),
-            'MUT_COMMAND': (),
-            'EXPR_COMMAND': (),
-            'EVAL_COMMAND': (),
-            'END_COMMAND': (),
-            'OPEN_PARANTHESIS': (
-                'OPEN_PARANTHESIS',
-                'GENERIC_OPERAND',
-                'UNARY_OPERATOR'
-            ),
-            'CLOSE_PARANTHESIS': (
-                'BINARY_OPERATOR',
-                'CLOSE_PARANTHESIS'
-            ),
-            'GENERIC_OPERAND': (
-                'BINARY_OPERATOR',
-                'CLOSE_PARANTHESIS'
-            ),
-            'UNARY_OPERATOR': (
-                'GENERIC_OPERAND',
-                'UNARY_OPERATOR',
-                'OPEN_PARANTHESIS'
-            ),
-            'BINARY_OPERATOR': (
-                'GENERIC_OPERAND',
-                'UNARY_OPERATOR',
-                'OPEN_PARANTHESIS'
-            )
-        }
-        return tokenRuleNames.get(tokenRuleName)
     
     def tokenize(self):
         expr = self.__expr.rstrip()
-        for rule, pattern, tokenType in RULE_ORDERS:
+        for pattern, rule, className in RULE_ORDERS:
             matches = re.finditer(pattern, expr, flags=re.MULTILINE)
             for match in matches:
-                patternName = ''
+                patternName = 'UNNAMED'
                 for k, v in match.groupdict().items():
                     if v is not None:
                         patternName = k
@@ -97,35 +59,49 @@ class Lexer(object):
                 token = Token(
                     groupValue=groupValue,
                     ruleName=rule(None if insertPos == 0 else copy.copy(self.__tokens[insertPos-1])) \
-                        if callable(rule) else rule,
+                        if callable(rule) else patternName if rule is None else rule,
                     startPos=startPos,
                     endPos=endPos,
-                    patternName=patternName,
-                    tokenType = tokenType(groupValue) if callable(tokenType) else tokenType
+                    className = className(groupValue) if callable(className) else className
                 )
                 self.__tokens.insert(insertPos, token)
                 expr = expr[:startPos] + (' ' * (endPos-startPos)) + expr[endPos:]
-        err = self.__validate(expr)
-        if err is None:
-            return self.__tokens
-        else:
-            raise ExpressionError(err)
-
-
-    def __validate(self, exprWithoutTokens: str) -> Optional[str]:
-        patternFriendlyNames = {
-            'PAT_STRING_LITERAL': 'string literal',
-            'PAT_NUMERIC_LITERAL': 'numeric literal',
-            'PAT_RESERVED_LITERAL': 'immutable operand',
-            'PAT_IDENTIFIER': 'mutable operand',
-            'PAT_PARANTHESIS': lambda t: f'{dict(PARANTHESIS="opening", OPERAND="closing").get(t.ruleName)} paranthesis',
-            'PAT_BINARY_OPERATOR': 'binary operator',
-            'PAT_UNARY_OPERATOR': 'unary operator'
-        }
-        match = re.search(r'\S', exprWithoutTokens)
+        # err = self.__validate(expr)
+        # if err is None:
+        #     return self.__tokens
+        # else:
+        #     raise ExpressionError(err)
+        match = re.search(r'\S', expr)
         if match is not None:
-            return f"occurance of unknown token '{match.group()}' found at {match.group()}"
+            raise ExpressionError(f"occurance of unknown token '{match.group()}' found at {match.group()}")
+        
+        self.__validate()
 
+    def __validate(self) -> Optional[str]:
+        patternFriendlyNames = {
+            'STRING_LITERAL': 'string literal',
+            'BINARY_LITERAL': 'base 2 numeric literal',
+            'OCTAL_LITERAL': 'base 8 numeric literal',
+            'HEX_LITERAL': 'base 16 numeric literal',
+            'DECIMAL_LITERAL': 'base 10 numeric literal',
+            'RESERVED_LITERAL': 'immutable operand',
+            'IDENTIFIER': 'mutable operand',
+            'PARANTHESIS': lambda t: f'{dict(PARANTHESIS="opening", OPERAND="closing").get(t.ruleName)} paranthesis',
+            'BINARY_OPERATOR': 'binary operator',
+            'UNARY_OPERATOR': 'unary operator',
+            'SIGN_OPERATOR': 'sign operator',
+            'SYM_ARROW': 'fat-arrow symbol',
+            'SYM_CMDARG': 'cmdarg symbol',
+            'SYM_COMMA': 'comma',
+            'STMT_ALIAS': 'statement',
+            'STMT_MUT': 'statement',
+            'STMT_CONST': 'statement',
+            'STMT_BEGIN': 'statement',
+            'STMT_END': 'statement',
+            'STMT_EXPR': 'statement',
+            'STMT_EVAL': 'statement'
+        }
+        
         currentTokenRuleName = 'INITIAL_RULE'
         prevToken = None
         for token in self.__tokens:
