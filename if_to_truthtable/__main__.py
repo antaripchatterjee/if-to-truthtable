@@ -4,7 +4,7 @@ import argparse
 from . import ExpressionBuilder
 from . import Lexer
 from . import ExpressionError
-from . import ScriptContext
+from . import Parser
 
 def read_exprs_from_cmdline(args):
     # Read value from '-e' argument
@@ -34,8 +34,9 @@ def interactive_mode():
                 try:
                     for expr, expr_id in ExpressionBuilder(code).cleanComments().expressions():
                         tokens = Lexer(expr=expr, expr_id=expr_id).tokenize()
-                        for token in tokens:
-                            print(token)
+                        if len(tokens) > 1:
+                            parser = Parser()
+                            parser.generate_ast(tokens)
                 except ExpressionError as e:
                     print(e, file=sys.stderr)
                 finally:
@@ -59,13 +60,15 @@ def main():
     except FileNotFoundError as e:
         print(e, file=sys.stderr)
         return
+    
     if code is not None:
         try:
             for expr in ExpressionBuilder(code).cleanComments().expressions():
                 print(expr)
                 tokens = Lexer(expr=expr).tokenize()
-                for token in tokens:
-                    print(token)
+                if len(tokens) > 1:
+                    parser = Parser()
+                    parser.generate_ast(tokens)
         except ExpressionError as e:
             print(e, file=sys.stderr)
     else:

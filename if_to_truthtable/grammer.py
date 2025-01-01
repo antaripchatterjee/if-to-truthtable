@@ -44,7 +44,7 @@ G = {
                                                 'THEN': {
                                                     'ONEOF': [
                                                         {
-                                                            'IF' : 'SYMBOL_COMMA',
+                                                            'IF' : 'SYM_COMMA',
                                                             'THEN': {
                                                                 'GOTO': 'STMT_ALIAS_CP',
                                                             }
@@ -151,7 +151,7 @@ G = {
                                                 'THEN': {
                                                     'ONEOF': [
                                                         {
-                                                            'IF' : 'SYMBOL_COMMA',
+                                                            'IF' : 'SYM_COMMA',
                                                             'THEN': {
                                                                 'GOTO': 'STMT_MUT_CP',
                                                             }
@@ -399,6 +399,6 @@ G = {
                     }
                 ]
             }
-        },
+        }
     ]
 }
