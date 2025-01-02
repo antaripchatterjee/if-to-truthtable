@@ -6,4 +6,5 @@ env/
 base/
 backups/
 .env
-document.txt
+test_01.py
+log.txt

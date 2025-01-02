@@ -3,7 +3,7 @@ import argparse
 
 from . import ExpressionBuilder
 from . import Lexer
-from . import ExpressionError
+from . import ExpressionError, GrammarError
 from . import Parser
 
 def read_exprs_from_cmdline(args):
@@ -32,13 +32,13 @@ def interactive_mode():
                 code = code[:-2] + '\n'
             else:
                 try:
-                    for expr, expr_id in ExpressionBuilder(code).cleanComments().expressions():
-                        tokens = Lexer(expr=expr, expr_id=expr_id).tokenize()
+                    for expr in ExpressionBuilder(code).cleanComments().expressions():
+                        tokens = Lexer(expr=expr).tokenize()
                         if len(tokens) > 1:
                             parser = Parser()
                             parser.generate_ast(tokens)
-                except ExpressionError as e:
-                    print(e, file=sys.stderr)
+                except (ExpressionError, GrammarError) as e:
+                    print(f'{expr}\n{e}', file=sys.stderr)
                 finally:
                     msg = '>  '
                     code = ''
@@ -64,13 +64,12 @@ def main():
     if code is not None:
         try:
             for expr in ExpressionBuilder(code).cleanComments().expressions():
-                print(expr)
                 tokens = Lexer(expr=expr).tokenize()
                 if len(tokens) > 1:
                     parser = Parser()
                     parser.generate_ast(tokens)
-        except ExpressionError as e:
-            print(e, file=sys.stderr)
+        except (ExpressionError, GrammarError) as e:
+            print(f'{expr}\n{e}', file=sys.stderr)
     else:
         interactive_mode()
 

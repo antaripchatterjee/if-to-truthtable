@@ -1,15 +1,12 @@
 import re
 import copy
 import bisect
-import fnmatch
-
-from typing import List, Optional, Callable
 
 from .error import ExpressionError
 from .rule import RULE_ORDERS
 from .token import Token
 
-from .grammer import *
+from .grammar import *
 
 
 class Lexer(object):
@@ -18,11 +15,11 @@ class Lexer(object):
         self.__expr: str = expr
         
     
-    def __insert_into_sorted_tokens(self, startPositions: List[int], startPos: int) -> int:
+    def __insert_into_sorted_tokens(self, startPositions: list[int], startPos: int) -> int:
         inserting_index = bisect.bisect_left(startPositions, startPos)
         return inserting_index
     
-    def tokenize(self) -> List[Token]:
+    def tokenize(self) -> list[Token]:
         __tokens = []
         expr = self.__expr.rstrip()
         for pattern, rule, className in RULE_ORDERS:
