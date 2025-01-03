@@ -7,40 +7,28 @@ from .context import ScriptContext
 
 
 class ParserError:
-    _instance = None
+    __instance = None
     
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(ParserError, cls).__new__(cls)
-            cls._instance._error_messages = []
-        return cls._instance
+        if cls.__instance is None:
+            cls.__instance = super(ParserError, cls).__new__(cls)
+            cls.__instance.__error_message = None
+            cls.__instance.__degree_of_error = 0
+        return cls.__instance
 
-    def __lshift__(self, error: str):
-        if isinstance(error, str):
-            self._error_messages.append(error)
-        else:
-            raise TypeError("Only str object is allowed")
-        return self
-    
-    def __iter__(self):
-        for e in self._error_messages:
-            yield e
-    
-    def __str__(self):
-        if self.has_errors():
-            return 'one or more expression errors during parsing\n * ' \
-                + '\n * '.join(self._error_messages)
-        else:
-            return None
-    
-    def messages(self):
-        return self._error_messages
+    def update(self, degree_of_error: int, error_message: str):
+        if degree_of_error > self.__degree_of_error:
+            self.__degree_of_error = degree_of_error
+            self.__error_message = error_message
 
-    def clear(self):
-        self._error_messages.clear()
+    @property
+    def message(self):
+        return self.__error_message
 
-    def has_errors(self):
-        return len(self._error_messages) > 0
+    @staticmethod
+    def reset():
+        ParserError().__error_message = None
+        ParserError().__degree_of_error = 0
     
 
 class Parser(object):
@@ -49,28 +37,24 @@ class Parser(object):
         self.__current_path = list()
         self.__checkpoints = dict()
 
-    def __oneof_items(self, g: dict, tokens: list[Token], caller, x):
-        # print(f'__oneof_items called by {caller} -> {x}')
+    def __oneof_items(self, g: dict, tokens: list[Token], doe: int):
         G_copy = copy.deepcopy(g)
         self.__current_path.append('ONEOF')
-        error_stack = ParserError()
+        parser_error = ParserError()
         syntax_matched = False
         eos_reached = False
 
         if len(tokens) == 0:
-            error_stack << 'incomplete statement, could not reach end of statement'
+            parser_error.update(100, 'incomplete statement, could not reach end of statement')
         else:
-            # print(tokens[0])
             index = 0
             G_copy_len = len(G_copy['ONEOF'])
             while index < G_copy_len:
                 option = G_copy['ONEOF'][index]
-                # print(index, option['IF'], end=' ')
                 if (isinstance(option['IF'], str) and tokens[0].ruleName == option['IF']) \
                     or (isinstance(option['IF'], (tuple, list, set)) and tokens[0].ruleName in option['IF']):
-                    # print('✅')
                     if syntax_matched:
-                        error_stack << 'ambiguous syntax, multiple matching pattern'
+                        parser_error.update(doe, 'ambiguous syntax, multiple matching pattern')
                         break
                     
                     G_next = option.get('THEN')
@@ -88,9 +72,9 @@ class Parser(object):
                         self.__checkpoints[checkpoint] = copy.deepcopy(self.__current_path)
                     
                     if 'ANYOF' in G_next.keys():
-                        eos_reached = self.__anyof_items(G_next, tokens_next, '__oneof_items', x+1)
+                        eos_reached = self.__anyof_items(G_next, tokens_next, doe+1)
                     elif 'ONEOF' in G_next.keys():
-                        eos_reached = self.__oneof_items(G_next, tokens_next, '__oneof_items', x+1)
+                        eos_reached = self.__oneof_items(G_next, tokens_next, doe+1)
                     elif 'GOTO' in G_next.keys():
                         goto = G_next['GOTO']
                         if goto is not None:
@@ -102,9 +86,9 @@ class Parser(object):
                                     G_next = G_next[i]['THEN'] if isinstance(i, int) else G_next[i]
                                 
                                 if 'ANYOF' in G_next.keys():
-                                    eos_reached = self.__anyof_items(G_next, tokens_next, '__oneof_items', x+1)
+                                    eos_reached = self.__anyof_items(G_next, tokens_next, doe+1)
                                 elif 'ONEOF' in G_next.keys():
-                                    eos_reached = self.__oneof_items(G_next, tokens_next, '__oneof_items', x+1)
+                                    eos_reached = self.__oneof_items(G_next, tokens_next, doe+1)
                                 else:
                                     raise GrammarError('expects ANYOF or ONEOF')
                             else:
@@ -112,47 +96,38 @@ class Parser(object):
                         else:
                             if tokens[0].ruleName == "EOS":
                                 eos_reached = True
-                                error_stack.clear()
+                                ParserError.reset()
                             else:
                                 raise GrammarError('encountering None checkpoint before EOS')
                     else:
                         raise GrammarError('encountering None checkpoint before EOS')
                     self.__current_path.pop()
-                # else:
-                    # print('❌')
-                    # if (option['IF'] == 'EOS'):
-                        # print(error_stack.messages())
-                if (error_stack.has_errors() and index == G_copy_len - 1) or eos_reached:
+                if (parser_error.message is not None and index == G_copy_len - 1) or eos_reached:
                     break
                 elif index < G_copy_len - 1:
                     syntax_matched = False
                 index += 1
             if not syntax_matched:
-                error_stack << f'unexpected occurrence of "{tokens[0].groupValue}"'
+                parser_error.update(doe, f'unexpected occurrence of "{tokens[0].groupValue}"')
         self.__current_path.pop()
-        # print(f'returning from __oneof_items called by {caller} with error {error_stack} -> {x}')
         return eos_reached
 
-    def __anyof_items(self, g: dict, tokens: list[Token], caller, x):
-        # print(f'__anyof_items called by {caller} -> {x}')
+    def __anyof_items(self, g: dict, tokens: list[Token], doe):
         G_copy = copy.deepcopy(g)
         self.__current_path.append('ANYOF')
-        error_stack = ParserError()
+        parser_error = ParserError()
         syntax_matched = False
         eos_reached = False
 
         if len(tokens) == 0:
-            error_stack << 'incomplete statement, could not reach end of statement'
+            parser_error.update(100, 'incomplete statement, could not reach end of statement')
         else:
-            # print(tokens[0])
             index = 0
             G_copy_len = len(G_copy['ANYOF'])
             while index < G_copy_len:
                 option = G_copy['ANYOF'][index]
-                # print(index, option['IF'], end=' ')
                 if (isinstance(option['IF'], str) and tokens[0].ruleName == option['IF']) \
                     or (isinstance(option['IF'], (tuple, list, set)) and tokens[0].ruleName in option['IF']):
-                    # print('✅')
                     
                     G_next = option.get('THEN')
                     if G_next is None:
@@ -167,9 +142,9 @@ class Parser(object):
 
                     tokens_next = tokens[1:]
                     if 'ANYOF' in G_next.keys():
-                        eos_reached = self.__anyof_items(G_next, tokens_next, '__anyof_items', x+1)
+                        eos_reached = self.__anyof_items(G_next, tokens_next, doe+1)
                     elif 'ONEOF' in G_next.keys():
-                        eos_reached = self.__oneof_items(G_next, tokens_next, '__anyof_items', x+1)
+                        eos_reached = self.__oneof_items(G_next, tokens_next, doe+1)
                     elif 'GOTO' in G_next.keys():
                         goto = G_next['GOTO']
                         if goto is not None:
@@ -181,9 +156,9 @@ class Parser(object):
                                     G_next = G_next[i]['THEN'] if isinstance(i, int) else G_next[i]
                                 
                                 if 'ANYOF' in G_next.keys():
-                                    eos_reached = self.__anyof_items(G_next, tokens_next, '__anyof_items', x+1)
+                                    eos_reached = self.__anyof_items(G_next, tokens_next, doe+1)
                                 elif 'ONEOF' in G_next.keys():
-                                    eos_reached = self.__oneof_items(G_next, tokens_next, '__anyof_items', x+1)
+                                    eos_reached = self.__oneof_items(G_next, tokens_next, doe+1)
                                 else:
                                     raise GrammarError('expects ANYOF or ONEOF')
                             else:
@@ -191,32 +166,29 @@ class Parser(object):
                         else:
                             if tokens[0].ruleName == "EOS":
                                 eos_reached = True
-                                error_stack.clear()
+                                ParserError.reset()
                             else:
                                 raise GrammarError('encountering None checkpoint before EOS')
                     else:
                         raise GrammarError('expects ANYOF or ONEOF or GOTO')
                     self.__current_path.pop()
-                # else:
-                    # print('❌')
 
-                if (error_stack.has_errors() and index == G_copy_len - 1) or syntax_matched or eos_reached:
+                if (parser_error.message and index == G_copy_len - 1) or syntax_matched or eos_reached:
                     break
                 elif index < G_copy_len - 1:
                     syntax_matched = False
                 index += 1
             if not syntax_matched:
-                error_stack << f'unexpected occurrence of "{tokens[0].groupValue}" p'
+                parser_error.update(doe, f'unexpected occurrence of "{tokens[0].groupValue}"')
         self.__current_path.pop()
-        # # print(f'returning from __anyof_items called by {caller} with error {error_stack} -> {x}')
         return eos_reached
 
     def generate_ast(self, tokens: list[Token]):
-        eos_reached = self.__anyof_items(G, tokens, 'generate_ast', 0)
-        if not eos_reached:
-            parser_error = ParserError()
-            if parser_error is not None:
-                raise ExpressionError(str(parser_error))
+        self.__anyof_items(G, tokens, 1)
+        parser_error = ParserError()
+        if parser_error.message is not None:
+            raise ExpressionError(parser_error.message)
+
         
         
 
