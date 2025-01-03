@@ -6,7 +6,7 @@ begin `P`;
 end `P`;
 
 expr `Download Now` :: `P` => downloadCount == 0 && allowDownload == true;
-expr `Download Later` :: `P` => downloadCount > 0 && (allowDownload) == true;
+expr `Download Later` :: `P` => downloadCount > 0 && !!!!(allowDownload) == true;
 
 eval `Download Now` :: 'Download Now Result';
 eval `Download Later` :: 'Download Later Result';
