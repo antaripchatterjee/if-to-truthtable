@@ -1,0 +1,14 @@
+alias `bool` :: true, false;
+
+begin `P`;
+    mut `downloadCount` :: 0, 1;
+    mut `allowDownload` :: `bool`;
+end `P`;
+
+expr `Download Now` :: `P` => downloadCount == 0 && allowDownload == true;
+expr `Download Later` :: `P` => downloadCount > 0 && !!!!(allowDownload) == true;
+
+eval `Download Now` :: 'Download Now Result';
+eval `Download Later` :: 'Download Later Result';
+
+const `TRUE` :: true;
